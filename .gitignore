@@ -1,0 +1,7 @@
+.DS_Store
+DEEPScreen-notes.txt
+training_files/target_training_datasets/*/
+!training_files/target_training_datasets/CHEMBL4282/
+training_files/chembl32_raw_filtered_sp_b_pchembl_data.csv4xls
+training_files/chembl_32_chemreps.txt
+training_files/chembl32_preprocessed_filtered_bioactivity_dataset.tsv

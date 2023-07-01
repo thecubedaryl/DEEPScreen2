@@ -1,0 +1,9 @@
+def save_comp_imgs_from_smiles(tar_id, comp_id, smiles):
+    mol = Chem.MolFromSmiles(smiles)
+    DrawingOptions.atomLabelFontSize = 55
+    DrawingOptions.dotsPerAngstrom = 100
+    DrawingOptions.bondLineWidth = 1.5
+    Draw.MolToFile(mol, os.path.join(training_files_path, "target_training_datasets", tar_id, "imgs", "{}.svg".format(comp_id)), size= ( IMG_SIZE , IMG_SIZE ))
+    cairosvg.svg2png(url=os.path.join(training_files_path, "target_training_datasets", tar_id, "imgs", "{}.svg".format(comp_id)), write_to=os.path.join(training_files_path, "target_training_datasets", tar_id, "imgs", "{}.png".format(comp_id)))
+    subprocess.call(["rm", os.path.join(training_files_path, "target_training_datasets", tar_id, "imgs", "{}.svg".format(comp_id))])
+
