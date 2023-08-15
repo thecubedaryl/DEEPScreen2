@@ -1,4 +1,4 @@
-DEEPScreen2: An Automated Tool for Drug-Target Interaction Prediction Using Deep Convolutional Neural Networks Fed by 2-D Images of Compounds
+## DEEPScreen2: An Automated Tool for Drug-Target Interaction Prediction Using Deep Convolutional Neural Networks Fed by 2-D Images of Compounds
 
 Hayriye Çelikbilek1, Tunca Doğan1,2
 
