@@ -1,1 +1,10 @@
-This is just for trial, guideline coming soon.
+DEEPScreen2: An Automated Tool for Drug-Target Interaction Prediction Using Deep Convolutional Neural Networks Fed by 2-D Images of Compounds
+
+Hayriye Çelikbilek1, Tunca Doğan1,2
+
+1Biological Data Science Lab, Dept. of Computer Engineering & AI Engineering, Hacettepe University, Ankara, Turkey
+2Dept. of Bioinformatics, Graduate School of Health Sciences, Hacettepe University, Ankara, Turkey
+
+Accurately predicting drug-target interactions (DTI) possess critical importance in drug discovery and development, due to the labour-intensive and costly nature of conventional experimental screening techniques. A widely-utilised deep learning-based DTI prediction tool is DEEPScreen, which was previously developed by our group. DEEPScreen2, an advanced framework for DTI prediction (Figure 1), emerges as a DCNN solution for researchers regardless of technical background, building upon the groundwork laid by its predecessor, DEEPScreen.
+In this study, we proposed DEEPScreen2 (Figure 1) by offering numerous innovations over the previous implementation: (i) adopting 300x300 compounds images to increase the resolution and enable the capture of nuanced structural features; (ii) augmenting data by 36 different 10-degree rotations of the original compound images to render the model rotation invariant and thus more robust; (iii) fully automatizing the data preparation, data loading and inference/prediction procedures; (iv) updating the training, validation and test data via employing ChEMBL database v33 (as opposed to v23 in the old version); (v) introducing percentile-60 based data splitting as active and inactive data points with respect to the pChEMBL values, which extended the library over 800 target proteins.
+In conclusion, With its advanced image-based representations and versatile usability, DEEPScreen2 embodies the synergy between artificial intelligence and molecular insight. We expect DEEPScreen2 to be utilised in translational research, by scientists working on drug discovery and repurposing as a means of early
