@@ -1,105 +1,95 @@
 import os
-import cv2
 import json
-import rdkit
+import cv2
 import numpy as np
 import pandas as pd
 from rdkit import Chem
-from rdkit.Chem.Draw.MolDrawing import DrawingOptions
 from rdkit.Chem import Draw
+from concurrent.futures import ProcessPoolExecutor
+#import time
 
-import cairosvg
-import subprocess
+"""prediction_files_path = "/Users/furkannecatiinan/DeepScreen/DEEPScreen2"
+target_prediction_dataset_path = "/Users/furkannecatiinan/DeepScreen/Optimizasyon1/pythonProject2/target_prediction_dataset_druggen/"
+smiles_file = "/Users/furkannecatiinan/DeepScreen/Optimizasyon1/pythonProject2/shortexample.csv"
+protein_name = "AKT"
+"""
+current_path_beginning = os.getcwd().split("DEEPScreen")[0]
+current_path_version = os.getcwd().split("DEEPScreen")[1].split("/")[0]
 
-prediction_files_path = "/home/atabey/DEEPScreen2.1/"
+
+
+prediction_files_path = "{}DEEPScreen{}".format(current_path_beginning, current_path_version)
 target_prediction_dataset_path = prediction_files_path + "target_prediction_dataset_druggen/"
 smiles_path = prediction_files_path + "molecule_smiles_dataset/"
-smiles_file = "/home/atabey/DEEPScreen2.1/target_prediction_dataset/CrossLoss_Selection_Chembl_wpreruns_smimaestro_docking_02.06.2024.csv"
+smiles_file = prediction_files_path + "molecule_smiles_dataset/"
 protein_name = "AKT"
 
-def save_comp_imgs_from_smiles(tar_id, comp_id, smiles, rot=0, SIZE=200, rot_size=300):
+def save_comp_imgs_from_smiles(tar_id, comp_id, smiles, rotations, SIZE=300, rot_size=300):
     mol = Chem.MolFromSmiles(smiles)
-    DrawingOptions.atomLabelFontSize = 55
-    DrawingOptions.dotsPerAngstrom = 100
-    DrawingOptions.bondLineWidth = 1.5
-    # Use MolToFile(mol, path, size, imageType="png", fitImage=True)
-    
-    # For higher quality of image
-    path_to_give_svg = os.path.join(prediction_files_path, "target_prediction_dataset_druggen", 
-                                tar_id, "imgs", "{}.svg".format(comp_id))
-    
-    path_to_give_png = os.path.join(prediction_files_path, "target_prediction_dataset_druggen", 
-                                    tar_id, "imgs", "{}.png".format(comp_id))
-    
-    Draw.MolToFile(mol, path_to_give_svg , size = (SIZE, SIZE ))
-    cairosvg.svg2png(url = path_to_give_svg, write_to = path_to_give_png)
-    subprocess.call(["rm", path_to_give_svg])
-    
-    # Make it larger with padding to prevent data loss while rotation
-    image = cv2.imread(path_to_give_png)
-    
-    white_color = (255,255,255)
-    full_image = np.full((rot_size, rot_size, 3), white_color, dtype = np.uint8)
-    # compute center offset
-    gap = rot_size - SIZE
-    (cX, cY) = (gap // 2, gap // 2)
-    
-    # copy image into center of result image
-    full_image[cY:cY + SIZE, cX:cX + SIZE] = image
-    
-    if rot != 0:
-        # Rotate it
-        (cX, cY) = (rot_size // 2, rot_size // 2)
-        M = cv2.getRotationMatrix2D((cX, cY), rot, 1.0)
-        full_image = cv2.warpAffine(full_image, M, (rot_size, rot_size), borderMode=cv2.INTER_LINEAR, #cv2.BORDER_CONSTANT, 
-                                    borderValue = white_color)
-    
-    # save result
-    cv2.imwrite(path_to_give_png, full_image)
-    
-    
-if not os.path.exists(target_prediction_dataset_path + protein_name + "/imgs"):
-    os.makedirs(target_prediction_dataset_path + protein_name + "/imgs")
+    if mol is None:
+        print(f"Invalid SMILES: {smiles}")
+        return
 
-f = open(target_prediction_dataset_path + protein_name + "/prediction_dict.json", "w+")
+    Draw.DrawingOptions.atomLabelFontSize = 55
+    Draw.DrawingOptions.dotsPerAngstrom = 100
+    Draw.DrawingOptions.bondLineWidth = 1.5
 
-json_dict = {"prediction": list()}
-json_object = json.dumps(json_dict) 
+    base_path = os.path.join(target_prediction_dataset_path, tar_id, "imgs")
 
-f.write(json_object)
-f.close()
-
-
-# removing the new line characters
-#with open(smiles_file) as f:
-#    smiles_list = [line.rstrip() for line in f]
-
-
-smiles_list = pd.read_csv(smiles_file)["smiles"].tolist()
-    
-compound_prefix = "GANt"
-GAN_name_count = 0
-total_image_count = 0
-angle_list = [str(angle) for angle in range(10,360,10)]
-
-for current_smiles in smiles_list:
-    
-    compound_id = compound_prefix + str(GAN_name_count)
-    
     try:
-        save_comp_imgs_from_smiles(protein_name, compound_id, current_smiles)
-        total_image_count += 1
-        #print(total_image_count, compound_id, current_smiles)
+        image = Draw.MolToImage(mol, size=(SIZE, SIZE))
+        image_array = np.array(image)
+        image_bgr = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
         
-        for angle in angle_list:
-        
-            save_comp_imgs_from_smiles(protein_name, compound_id+"_"+angle, current_smiles, int(angle))
-            total_image_count += 1
-            #print(total_image_count, compound_id+"_"+angle, current_smiles, int(angle))
-            
+        for rot, suffix in rotations:
+            if rot != 0:
+                full_image = np.full((rot_size, rot_size, 3), (255, 255, 255), dtype=np.uint8)
+                gap = rot_size - SIZE
+                (cX, cY) = (gap // 2, gap // 2)
+                full_image[cY:cY + SIZE, cX:cX + SIZE] = image_bgr
+                (cX, cY) = (rot_size // 2, rot_size // 2)
+                M = cv2.getRotationMatrix2D((cX, cY), rot, 1.0)
+                full_image = cv2.warpAffine(full_image, M, (rot_size, rot_size), borderMode=cv2.INTER_LINEAR,
+                                            borderValue=(255, 255, 255))
+            else:
+                full_image = image_bgr
+
+            path_to_save = os.path.join(base_path, f"{comp_id}{suffix}.png")
+            cv2.imwrite(path_to_save, full_image)
     except Exception as e:
-        print(e, GAN_name_count, compound_id, current_smiles)
-        
-    print(GAN_name_count, compound_id, current_smiles)
-    GAN_name_count += 1
-        
+        print(f"Error creating PNG for {comp_id}: {e}")
+
+def initialize_dirs(protein_name):
+    if not os.path.exists(os.path.join(target_prediction_dataset_path, protein_name, "imgs")):
+        os.makedirs(os.path.join(target_prediction_dataset_path, protein_name, "imgs"))
+
+    f = open(os.path.join(target_prediction_dataset_path, protein_name, "prediction_dict.json"), "w+")
+    json_dict = {"prediction": list()}
+    json_object = json.dumps(json_dict)
+    f.write(json_object)
+    f.close()
+
+def process_smiles(smiles_data):
+    current_smiles, compound_id = smiles_data
+    rotations = [(0, ""), *[(angle, f"_{angle}") for angle in range(10, 360, 10)]]
+    save_comp_imgs_from_smiles(protein_name, compound_id, current_smiles, rotations)
+
+def generate_images(smiles_file, protein_name):
+    smiles_list = pd.read_csv(smiles_file)["smiles"].tolist()
+    compound_prefix = "GANt"
+    compound_ids = [compound_prefix + str(i) for i in range(len(smiles_list))]
+    smiles_data_list = list(zip(smiles_list, compound_ids))
+    
+    #start_time = time.time()
+    with ProcessPoolExecutor() as executor:
+        executor.map(process_smiles, smiles_data_list)
+    #end_time = time.time()
+    
+    #print(f"Time taken for all: {end_time - start_time}")
+    total_image_count = len(smiles_list) * len([(0, ""), *[(angle, f"_{angle}") for angle in range(10, 360, 10)]])
+    print(f"Total images generated: {total_image_count}")
+
+# Örnek fonksiyon çağrısı
+if __name__ == "__main__":
+    initialize_dirs(protein_name)
+    generate_images(smiles_file, protein_name)
