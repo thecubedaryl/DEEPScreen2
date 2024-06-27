@@ -6,25 +6,11 @@ import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import Draw
 from concurrent.futures import ProcessPoolExecutor
-#import time
+import time
+import argparse
+import multiprocessing
 
-"""prediction_files_path = "/Users/furkannecatiinan/DeepScreen/DEEPScreen2"
-target_prediction_dataset_path = "/Users/furkannecatiinan/DeepScreen/Optimizasyon1/pythonProject2/target_prediction_dataset_druggen/"
-smiles_file = "/Users/furkannecatiinan/DeepScreen/Optimizasyon1/pythonProject2/shortexample.csv"
-protein_name = "AKT"
-"""
-current_path_beginning = os.getcwd().split("DEEPScreen")[0]
-current_path_version = os.getcwd().split("DEEPScreen")[1].split("/")[0]
-
-
-
-prediction_files_path = "{}DEEPScreen{}".format(current_path_beginning, current_path_version)
-target_prediction_dataset_path = prediction_files_path + "target_prediction_dataset_druggen/"
-smiles_path = prediction_files_path + "molecule_smiles_dataset/"
-smiles_file = prediction_files_path + "molecule_smiles_dataset/"
-protein_name = "AKT"
-
-def save_comp_imgs_from_smiles(tar_id, comp_id, smiles, rotations, SIZE=300, rot_size=300):
+def save_comp_imgs_from_smiles(tar_id, comp_id, smiles, rotations, target_prediction_dataset_path, SIZE=300, rot_size=300):
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         print(f"Invalid SMILES: {smiles}")
@@ -35,6 +21,9 @@ def save_comp_imgs_from_smiles(tar_id, comp_id, smiles, rotations, SIZE=300, rot
     Draw.DrawingOptions.bondLineWidth = 1.5
 
     base_path = os.path.join(target_prediction_dataset_path, tar_id, "imgs")
+
+    if not os.path.exists(base_path):
+        os.makedirs(base_path)
 
     try:
         image = Draw.MolToImage(mol, size=(SIZE, SIZE))
@@ -59,7 +48,7 @@ def save_comp_imgs_from_smiles(tar_id, comp_id, smiles, rotations, SIZE=300, rot
     except Exception as e:
         print(f"Error creating PNG for {comp_id}: {e}")
 
-def initialize_dirs(protein_name):
+def initialize_dirs(protein_name, target_prediction_dataset_path):
     if not os.path.exists(os.path.join(target_prediction_dataset_path, protein_name, "imgs")):
         os.makedirs(os.path.join(target_prediction_dataset_path, protein_name, "imgs"))
 
@@ -70,26 +59,45 @@ def initialize_dirs(protein_name):
     f.close()
 
 def process_smiles(smiles_data):
-    current_smiles, compound_id = smiles_data
-    rotations = [(0, ""), *[(angle, f"_{angle}") for angle in range(10, 360, 10)]]
-    save_comp_imgs_from_smiles(protein_name, compound_id, current_smiles, rotations)
+    current_smiles, compound_id, target_prediction_dataset_path, protein_name = smiles_data
+    rotations = [(0, "_0"), *[(angle, f"_{angle}") for angle in range(10, 360, 10)]]
+    save_comp_imgs_from_smiles(protein_name, compound_id, current_smiles, rotations, target_prediction_dataset_path)
 
-def generate_images(smiles_file, protein_name):
+def generate_images(smiles_file, protein_name, target_prediction_dataset_path, max_cores):
     smiles_list = pd.read_csv(smiles_file)["smiles"].tolist()
     compound_prefix = "GANt"
     compound_ids = [compound_prefix + str(i) for i in range(len(smiles_list))]
-    smiles_data_list = list(zip(smiles_list, compound_ids))
+    smiles_data_list = [(smiles, compound_ids[i], target_prediction_dataset_path, protein_name) for i, smiles in enumerate(smiles_list)]
     
-    #start_time = time.time()
-    with ProcessPoolExecutor() as executor:
+    start_time = time.time()
+    with ProcessPoolExecutor(max_workers=max_cores) as executor:
         executor.map(process_smiles, smiles_data_list)
-    #end_time = time.time()
+    end_time = time.time()
     
-    #print(f"Time taken for all: {end_time - start_time}")
+    print(f"Time taken for all: {end_time - start_time}")
     total_image_count = len(smiles_list) * len([(0, ""), *[(angle, f"_{angle}") for angle in range(10, 360, 10)]])
     print(f"Total images generated: {total_image_count}")
 
-# Örnek fonksiyon çağrısı
 if __name__ == "__main__":
-    initialize_dirs(protein_name)
-    generate_images(smiles_file, protein_name)
+    parser = argparse.ArgumentParser()
+
+    # Usage format:
+    # --dataset_file <dataset_file_path> --max_cores <max_cores> --target_prediction_dataset_path <target_prediction_dataset_path> --protein_name <protein_name>
+    
+    parser.add_argument('--dataset_file', type=str, default='path/to/your/default/dataset.csv', help='Path to the dataset file')
+    parser.add_argument('--max_cores', type=int, default=multiprocessing.cpu_count() - 1, help='Maximum number of cores to use')
+    parser.add_argument('--target_prediction_dataset_path', type=str, default='path/to/your/default/target_prediction_dataset/', help='Path to the target prediction dataset directory')
+    parser.add_argument('--protein_name', type=str, default='AKT', help='Name of the protein')
+
+    args = parser.parse_args()
+
+    if args.max_cores > multiprocessing.cpu_count():
+        print(f"Warning: Maximum number of cores is {multiprocessing.cpu_count()}. Using maximum available cores.")
+        args.max_cores = multiprocessing.cpu_count()
+
+    smiles_file = args.dataset_file
+    protein_name = args.protein_name
+    target_prediction_dataset_path = args.target_prediction_dataset_path
+
+    initialize_dirs(protein_name, target_prediction_dataset_path)
+    generate_images(smiles_file, protein_name, target_prediction_dataset_path, args.max_cores)
