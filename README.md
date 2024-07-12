@@ -60,7 +60,7 @@ This script downloads ChEMBL activity data and associated SMILES strings for spe
 Run the script:
    
    ```bash
-   python download.py --target_chembl_id "CHEMBL286" --assay_type "B" --pchembl_threshold 6.0 --output_file "activity_data.csv"
+   python chembl_downloading.py --target_chembl_id "CHEMBL286" --assay_type "B" --pchembl_threshold 6.0 --output_file "activity_data.csv"
    ```
 
 --target_chembl_id: ChEMBL ID(s) of the target(s), comma-separated.
