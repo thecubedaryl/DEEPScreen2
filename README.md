@@ -36,3 +36,43 @@ This script generates molecule images from a dataset of SMILES strings using par
 
 ## Output
 The generated images will be saved in the specified `target_prediction_dataset_path` under subdirectories named after the protein.
+
+
+# ChEMBL Data Downloader
+
+This script downloads ChEMBL activity data and associated SMILES strings for specified targets. The data is saved to a CSV file.
+
+## Prerequisites
+
+- Python 3.x
+- Install required packages:
+
+  ```bash
+  pip install requests pandas
+  ```
+## Usage
+**Navigate to the bin directory:**
+
+   ```bash
+   cd bin
+   ```
+
+Run the script:
+   
+   ```bash
+   python download.py --target_chembl_id "CHEMBL286" --assay_type "B" --pchembl_threshold 6.0 --output_file "activity_data.csv"
+   ```
+
+--target_chembl_id: ChEMBL ID(s) of the target(s), comma-separated.
+--assay_type: Assay type(s), comma-separated (default: 'B').
+--pchembl_threshold: Threshold for pChembl value (default: 6.0).
+--output_file: Output file name (default: 'activity_data.csv').
+
+
+**Example Command:**
+
+   ```bash
+      python download.py --target_chembl_id "CHEMBL286" --assay_type "B" --pchembl_threshold 6.0 --output_file "activity_data.csv"
+   ```
+
+The script will check if the dataset exists in training_files/target_training_datasets. If it exists, the download is skipped; otherwise, it downloads and saves the data.
