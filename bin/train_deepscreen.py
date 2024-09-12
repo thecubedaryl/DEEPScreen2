@@ -1,26 +1,21 @@
 import os
-import sys
-import cv2
-import json
+
 import torch
-import random
+
 import warnings
-import subprocess
+
 import numpy as np
-import pandas as pd
+
 import torch.nn as nn
 from models import CNNModel1
-from torch.autograd import Variable
+
 from data_processing import get_train_test_val_data_loaders
 from evaluation_metrics import prec_rec_f1_acc_mcc, get_list_of_scores
-from rdkit import Chem
+
 from sklearn.metrics import roc_auc_score, average_precision_score
-from rdkit.Chem import Draw
-from concurrent.futures import ProcessPoolExecutor
+
 from data_processing import generate_images
-import time
-import argparse
-import multiprocessing
+
 import wandb
 
 warnings.filterwarnings(action='ignore')
@@ -137,7 +132,6 @@ def train_validation_test_training(target_id, model_name, fully_layer_1, fully_l
     best_val_test_performance_dict = dict()
     best_val_test_performance_dict["MCC"] = 0.0
 
-    
     for epoch in range(n_epoch):
         total_training_count = 0
         total_training_loss = 0.0
@@ -148,7 +142,9 @@ def train_validation_test_training(target_id, model_name, fully_layer_1, fully_l
         all_training_preds = []
         all_training_probs = []
         print("Training mode:", model.training)
+        print(train_loader)
         for i, data in enumerate(train_loader):
+            
             
             batch_number += 1
             optimizer.zero_grad()
@@ -248,7 +244,9 @@ def train_validation_test_training(target_id, model_name, fully_layer_1, fully_l
 
             best_val_test_result_fl.close()
             best_val_test_prediction_fl.close()
-  
+        
+        
+    
     wandb.finish()
 
-    generate_images(dataset_file, target_id, target_prediction_dataset_path, max_cores)
+    #generate_images(dataset_file, target_id, target_prediction_dataset_path, max_cores)
