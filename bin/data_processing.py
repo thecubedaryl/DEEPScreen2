@@ -20,9 +20,9 @@ import time
 import argparse
 import multiprocessing
 import csv
+from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 
 warnings.filterwarnings(action='ignore')
-
 current_path_beginning = os.getcwd().split("DEEPScreen")[0]
 current_path_version = os.getcwd().split("DEEPScreen")[1].split("/")[0]
 
@@ -30,11 +30,9 @@ project_file_path = "{}DEEPScreen{}".format(current_path_beginning, current_path
 training_files_path = "{}/training_files".format(project_file_path)
 result_files_path = "{}/result_files".format(project_file_path)
 trained_models_path = "{}/trained_models".format(project_file_path)
-target_prediction_dataset_path = "{}/training_files/target_training_datasets".format(project_file_path)
 
 IMG_SIZE = 300
 
-protein_name = "AKT"
 
 def get_chemblid_smiles_inchi_dict(smiles_inchi_fl):
     chemblid_smiles_inchi_dict = pd.read_csv(smiles_inchi_fl, sep=",", index_col=False).set_index('molecule_chembl_id').T.to_dict('list')
@@ -46,7 +44,6 @@ def save_comp_imgs_from_smiles(tar_id, comp_id, smiles, rotations, target_predic
     if mol is None:
         print(f"Invalid SMILES: {smiles}")
         return
-
     Draw.DrawingOptions.atomLabelFontSize = 55
     Draw.DrawingOptions.dotsPerAngstrom = 100
     Draw.DrawingOptions.bondLineWidth = 1.5
@@ -75,38 +72,55 @@ def save_comp_imgs_from_smiles(tar_id, comp_id, smiles, rotations, target_predic
                 full_image = image_bgr
 
             path_to_save = os.path.join(base_path, f"{comp_id}{suffix}.png")
-            print(path_to_save)
+            #print(path_to_save)
             cv2.imwrite(path_to_save, full_image)
     except Exception as e:
         print(f"Error creating PNG for {comp_id}: {e}")
 
-def initialize_dirs(protein_name, target_prediction_dataset_path):
-    if not os.path.exists(os.path.join(target_prediction_dataset_path, protein_name, "imgs")):
-        os.makedirs(os.path.join(target_prediction_dataset_path, protein_name, "imgs"))
+def initialize_dirs(targetid , target_prediction_dataset_path):
+    if not os.path.exists(os.path.join(target_prediction_dataset_path, targetid, "imgs")):
+        os.makedirs(os.path.join(target_prediction_dataset_path, targetid, "imgs"))
 
-    f = open(os.path.join(target_prediction_dataset_path, protein_name, "prediction_dict.json"), "w+")
+    f = open(os.path.join(target_prediction_dataset_path, targetid, "prediction_dict.json"), "w+")
     json_dict = {"prediction": list()}
     json_object = json.dumps(json_dict)
     f.write(json_object)
     f.close()
 def process_smiles(smiles_data):
-    current_smiles, compound_id, target_prediction_dataset_path, protein_name = smiles_data
+    current_smiles, compound_id, target_prediction_dataset_path, targetid,act_inact,test_val_train_situation = smiles_data
     rotations = [(0, "_0"), *[(angle, f"_{angle}") for angle in range(10, 360, 10)]]
-    save_comp_imgs_from_smiles(protein_name, compound_id, current_smiles, rotations, target_prediction_dataset_path)
+    local_dict = {test_val_train_situation: []}
+    try:
+            
+        save_comp_imgs_from_smiles(targetid, compound_id, current_smiles, rotations, target_prediction_dataset_path)
 
-def generate_images(smiles_file, protein_name, target_prediction_dataset_path, max_cores):
+        for i in range(0,360,10):
+            local_dict[test_val_train_situation].append([compound_id + "_" + str(i), int(act_inact)])
+
+    except:
+        
+        pass
+    return local_dict
+    
+def generate_images(smiles_file, targetid, max_cores,tar_train_val_test_dict,target_prediction_dataset_path):
+
     
     smiles_list = pd.read_csv(smiles_file)["canonical_smiles"].tolist()
-    
-    compound_prefix = "GANt"
-    compound_ids = [compound_prefix + str(i) for i in range(len(smiles_list))]
-    smiles_data_list = [(smiles, compound_ids[i], target_prediction_dataset_path, protein_name) for i, smiles in enumerate(smiles_list)]
-    
+    compound_ids = pd.read_csv(smiles_file)["molecule_chembl_id"].tolist()
+    act_inact_situations = pd.read_csv(smiles_file)["act_inact_id"].tolist()
+    test_val_train_situations = pd.read_csv(smiles_file)["test_val_train"].tolist()
+    smiles_data_list = [(smiles, compound_ids[i], target_prediction_dataset_path, targetid,act_inact_situations[i],test_val_train_situations[i]) for i, smiles in enumerate(smiles_list)]
+
     start_time = time.time()
-    with ProcessPoolExecutor(max_workers=max_cores) as executor:
-        executor.map(process_smiles, smiles_data_list)
-    end_time = time.time()
     
+    with ProcessPoolExecutor(max_workers=max_cores) as executor:
+        results = list(executor.map(process_smiles, smiles_data_list))
+    end_time = time.time()
+
+    for result in results:
+        for key, value in result.items():
+            tar_train_val_test_dict[key].extend(value)
+
     print(f"Time taken for all: {end_time - start_time}")
     total_image_count = len(smiles_list) * len([(0, ""), *[(angle, f"_{angle}") for angle in range(10, 360, 10)]])
     print(f"Total images generated: {total_image_count}")
@@ -280,7 +294,7 @@ def create_act_inact_files_similarity_based_neg_enrichment_threshold(act_inact_f
     
 
     seq_to_other_seqs_score_dict = dict()
-    with open("{}\\{}".format(training_files_path, blast_sim_fl)) as f:
+    with open("{}/{}".format(training_files_path, blast_sim_fl)) as f:
         for line in f:
             parts = line.split("\t")
             u_id1, u_id2, score = parts[0].split("|")[1], parts[1].split("|")[1], float(parts[2])
@@ -335,38 +349,22 @@ def create_act_inact_files_similarity_based_neg_enrichment_threshold(act_inact_f
             str_inact = "{}_inact\t".format(targ) + ",".join(new_all_act_inact_dict[targ][1])
             act_inact_comp_fl.write("{}\n".format(str_inact))
 
-            str_act_inact_count = "{}\t{}\\t{}\n".format(targ, len(new_all_act_inact_dict[targ][0]), len(new_all_act_inact_dict[targ][1]))
+            str_act_inact_count = "{}\t{}\t{}\n".format(targ, len(new_all_act_inact_dict[targ][0]), len(new_all_act_inact_dict[targ][1]))
             act_inact_count_fl.write(str_act_inact_count)
 
     act_inact_count_fl.close()
     act_inact_comp_fl.close()
 
-def extract_canonical_smiles(input_file):
-    output_file = input_file.replace('.csv', '_only_canonical_smiles.csv')
-    
-    with open(input_file, 'r', newline='') as csvfile:
-        reader = csv.DictReader(csvfile)
-        canonical_smiles = [row['canonical_smiles'] for row in reader]
-    
-    with open(output_file, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['canonical_smiles'])
-        for smiles in canonical_smiles:
-            writer.writerow([smiles])
-    
-    return output_file
 
-def create_final_randomized_training_val_test_sets(neg_act_inact_fl, smiles_inchi_fl):
 
-    extract_canonical_smiles(smiles_inchi_fl)
+def create_final_randomized_training_val_test_sets(neg_act_inact_fl, smiles_inchi_fl,max_cores,targetid,target_prediction_dataset_path):
 
-    chemblid_smiles_dict = get_chemblid_smiles_inchi_dict(smiles_inchi_fl) 
+    chemblid_smiles_dict = get_chemblid_smiles_inchi_dict(smiles_inchi_fl) # bu 2552 len e sahip
     
-    
-    create_act_inact_files_for_all_targets(neg_act_inact_fl, "chembl27") 
+    create_act_inact_files_for_all_targets(neg_act_inact_fl, "chembl27") # sıkıntı bunda
 
     act_inact_dict = get_act_inact_list_for_all_targets("{}/chembl27_preprocessed_filtered_act_inact_comps_10.0_20.0.tsv".format(training_files_path))
-
+    
     for tar in act_inact_dict:
         
         os.makedirs(os.path.join(training_files_path, "target_training_datasets", tar, "imgs"))
@@ -380,6 +378,7 @@ def create_final_randomized_training_val_test_sets(neg_act_inact_fl, smiles_inch
 
         random.shuffle(act_list)
         random.shuffle(inact_list)
+
 
         act_training_validation_size = int(0.8 * len(act_list))
         act_training_size = int(0.8 * act_training_validation_size)
@@ -401,14 +400,59 @@ def create_final_randomized_training_val_test_sets(neg_act_inact_fl, smiles_inch
         tar_train_val_test_dict["training"] = []
         tar_train_val_test_dict["validation"] = []
         tar_train_val_test_dict["test"] = []
-        rotations = [(0, "_0"), *[(angle, f"_{angle}") for angle in range(10, 360, 10)]]
+        
 
         parser = argparse.ArgumentParser()
 
-        parser.add_argument('--dataset_file', type=str, default= "{}/CHEMBL286/activity_data_only_canonical_smiles.csv".format(target_prediction_dataset_path), help='Path to the dataset file')
-        parser.add_argument('--max_cores', type=int, default=multiprocessing.cpu_count() - 1, help='Maximum number of cores to use')
-        parser.add_argument('--target_prediction_dataset_path', type=str, default=target_prediction_dataset_path, help='Path to the target prediction dataset directory')
-        parser.add_argument('--protein_name', type=str, default='AKT', help='Name of the protein')
+    # Usage format:
+    # --dataset_file <dataset_file_path> --max_cores <max_cores> --target_prediction_dataset_path <target_prediction_dataset_path> --protein_name <protein_name>
+
+
+        directory = "{}/{}".format(target_prediction_dataset_path,targetid)
+
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        file_name = "smilesfile.csv"
+        last_smiles_file = os.path.join(directory, file_name)
+
+        with open(last_smiles_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["canonical_smiles", "molecule_chembl_id", "act_inact_id","test_val_train"])
+
+        
+        for comp_id in training_act_comp_id_list:
+            with open(last_smiles_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([chemblid_smiles_dict[comp_id][3], comp_id, "1","training"])
+            
+        for comp_id in val_act_comp_id_list:
+            with open(last_smiles_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([chemblid_smiles_dict[comp_id][3], comp_id, "1","validation"])
+            
+        for comp_id in test_act_comp_id_list:
+            with open(last_smiles_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([chemblid_smiles_dict[comp_id][3], comp_id, "1","test"])
+            
+        for comp_id in training_inact_comp_id_list:
+            with open(last_smiles_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([chemblid_smiles_dict[comp_id][3], comp_id, "0","training"])
+            
+        for comp_id in val_inact_comp_id_list:
+            with open(last_smiles_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([chemblid_smiles_dict[comp_id][3], comp_id, "0","validation"])
+            
+        for comp_id in test_inact_comp_id_list:
+            with open(last_smiles_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([chemblid_smiles_dict[comp_id][3], comp_id, "0","test"])
+
+        parser.add_argument('--dataset_file', type=str, default="{}/smilesfile.csv".format(directory), help='Path to the dataset file')
+        parser.add_argument('--max_cores', type=int, default = max_cores, help='Maximum number of cores to use')
 
         args = parser.parse_args()
 
@@ -417,68 +461,13 @@ def create_final_randomized_training_val_test_sets(neg_act_inact_fl, smiles_inch
             args.max_cores = multiprocessing.cpu_count()
 
         smiles_file = args.dataset_file
-        protein_name = args.protein_name
         
-        initialize_dirs(protein_name, target_prediction_dataset_path)
+        initialize_dirs(targetid , target_prediction_dataset_path)
+
         
-        for comp_id in training_act_comp_id_list:
-            
-            try:
 
-                save_comp_imgs_from_smiles(tar, comp_id, chemblid_smiles_dict[comp_id][3], rotations, target_prediction_dataset_path)
-
-                for i in range(0,360,10):
-
-                    tar_train_val_test_dict["training"].append([comp_id + "_"+ str(i), 1])
-
-            except:
-                pass
-      
-        for comp_id in val_act_comp_id_list:
-            try:
-                
-                save_comp_imgs_from_smiles(tar, comp_id, chemblid_smiles_dict[comp_id][3], rotations, target_prediction_dataset_path)
-
-                for i in range(0,360,10):
-                    tar_train_val_test_dict["validation"].append([comp_id + "_" + str(i), 1])
-            except:
-                
-                pass
-        for comp_id in test_act_comp_id_list:
-            try:
-
-                save_comp_imgs_from_smiles(tar, comp_id, chemblid_smiles_dict[comp_id][3], rotations, target_prediction_dataset_path)
-                for i in range(0,360,10):
-                    tar_train_val_test_dict["test"].append([comp_id + "_" + str(i), 1])
-            except:
-                
-                pass
-        for comp_id in training_inact_comp_id_list:
-            try:
-
-                save_comp_imgs_from_smiles(tar, comp_id, chemblid_smiles_dict[comp_id][3], rotations, target_prediction_dataset_path)
-                for i in range(0,360,10):
-                    tar_train_val_test_dict["training"].append([comp_id + "_" + str(i), 0])
-            except:
-                
-                pass
-        for comp_id in val_inact_comp_id_list:
-            try:
-
-                save_comp_imgs_from_smiles(tar, comp_id, chemblid_smiles_dict[comp_id][3], rotations, target_prediction_dataset_path)
-                for i in range(0,360,10):
-                    tar_train_val_test_dict["validation"].append([comp_id + "_" + str(i), 0])
-            except:
-                
-                pass
-        for comp_id in test_inact_comp_id_list:
-            try:
-                save_comp_imgs_from_smiles(tar, comp_id, chemblid_smiles_dict[comp_id][3], rotations, target_prediction_dataset_path)
-                for i in range(0,360,10):
-                    tar_train_val_test_dict["test"].append([comp_id + "_" + str(i), 0])
-            except:
-                
-                pass
+        generate_images(smiles_file , targetid , args.max_cores , tar_train_val_test_dict,target_prediction_dataset_path)
+    
         random.shuffle(tar_train_val_test_dict["training"])
         random.shuffle(tar_train_val_test_dict["validation"])
         random.shuffle(tar_train_val_test_dict["test"])
@@ -486,13 +475,6 @@ def create_final_randomized_training_val_test_sets(neg_act_inact_fl, smiles_inch
         with open(os.path.join(training_files_path, "target_training_datasets", tar, 'train_val_test_dict.json'), 'w') as fp:
             json.dump(tar_train_val_test_dict, fp)
        
-
-import os
-import cv2
-import json
-import random
-import torch
-from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 
 class DEEPScreenDataset(Dataset):
     def __init__(self, target_id, train_val_test):
@@ -508,9 +490,12 @@ class DEEPScreenDataset(Dataset):
 
     def __getitem__(self, index):
         comp_id = self.compid_list[index]
+        
+        # Tüm açılar için görüntüleri okuyun
         #img_paths = [os.path.join(self.training_dataset_path, "imgs", "{}_{}.png".format(comp_id, angle)) for angle in range(0, 360, 10)]
         img_paths = [os.path.join(self.training_dataset_path, "imgs", "{}.png".format(comp_id))]
 
+        
         img_path = random.choice([path for path in img_paths if os.path.exists(path)])
 
         if not os.path.exists(img_path):
